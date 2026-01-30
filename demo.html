@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数字法庭 - Digital Court Demo</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        [v-cloak] { display: none; }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: #1f2937; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+        @keyframes pulse-border {
+            0%, 100% { border-color: #10b981; }
+            50% { border-color: #34d399; }
+        }
+        .connected-pulse { animation: pulse-border 2s infinite; }
+
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .message-animate { animation: fade-in 0.3s ease-out; }
+
+        .role-judge { border-left-color: #f59e0b; background: linear-gradient(90deg, rgba(245,158,11,0.1) 0%, transparent 100%); }
+        .role-prosecutor { border-left-color: #3b82f6; background: linear-gradient(90deg, rgba(59,130,246,0.1) 0%, transparent 100%); }
+        .role-defendant { border-left-color: #10b981; background: linear-gradient(90deg, rgba(16,185,129,0.1) 0%, transparent 100%); }
+        .role-clerk { border-left-color: #6b7280; background: linear-gradient(90deg, rgba(107,114,128,0.1) 0%, transparent 100%); }
+        .role-system { border-left-color: #8b5cf6; background: linear-gradient(90deg, rgba(139,92,246,0.1) 0%, transparent 100%); }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <div id="app" v-cloak>
+        <!-- 顶部标题栏 -->
+        <header class="bg-gray-800 border-b border-gray-700 px-6 py-4">
+            <div class="max-w-7xl mx-auto flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="text-2xl">⚖️</div>
+                    <div>
+                        <h1 class="text-xl font-bold text-white">数字法庭 - Digital Court</h1>
+                        <p class="text-sm text-gray-400">AI 驱动的庭审模拟平台</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <!-- 连接状态 -->
+                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm"
+                         :class="connected ? 'bg-green-900/50 text-green-400 connected-pulse border border-green-700' : 'bg-gray-700 text-gray-400'">
+                        <span class="w-2 h-2 rounded-full" :class="connected ? 'bg-green-400' : 'bg-gray-500'"></span>
+                        {{ connected ? '已连接' : '未连接' }}
+                    </div>
+                    <!-- 会话ID -->
+                    <div v-if="threadId" class="text-xs text-gray-500 font-mono">
+                        Thread: {{ threadId.slice(0, 8) }}...
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <!-- 左侧控制面板 -->
+            <div class="lg:col-span-1 space-y-4">
+                <!-- 操作面板 -->
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                    <h2 class="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-2">
+                        <span>🎮</span> 控制面板
+                    </h2>
+
+                    <!-- 开始/停止按钮 -->
+                    <button @click="toggleTrial"
+                            :disabled="!connected || (trialStarted && !trialCompleted)"
+                            class="w-full py-3 px-4 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2"
+                            :class="!connected ? 'bg-gray-700 text-gray-500 cursor-not-allowed' :
+                                    trialStarted && !trialCompleted ? 'bg-yellow-600 hover:bg-yellow-500 text-white' :
+                                    'bg-blue-600 hover:bg-blue-500 text-white'">
+                        <span v-if="!connected">🔌 请先连接</span>
+                        <span v-else-if="!trialStarted">▶️ 开始庭审</span>
+                        <span v-else-if="trialCompleted">🔄 重新开始</span>
+                        <span v-else>⏸️ 庭审进行中...</span>
+                    </button>
+
+                    <!-- 清空消息 -->
+                    <button @click="clearMessages"
+                            class="w-full mt-2 py-2 px-4 rounded-lg text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors">
+                        🗑️ 清空消息
+                    </button>
+                </div>
+
+                <!-- 进度面板 -->
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                    <h2 class="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-2">
+                        <span>📊</span> 庭审进度
+                    </h2>
+
+                    <!-- 进度条 -->
+                    <div class="mb-3">
+                        <div class="flex justify-between text-xs text-gray-400 mb-1">
+                            <span>进度</span>
+                            <span>{{ progress.toFixed(1) }}%</span>
+                        </div>
+                        <div class="h-2 bg-gray-700 rounded-full overflow-hidden">
+                            <div class="h-full transition-all duration-500 ease-out"
+                                 :class="progressBarColor"
+                                 :style="{ width: progress + '%' }">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 当前阶段 -->
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">当前阶段</span>
+                            <span class="font-medium" :class="phaseColor">{{ phaseDisplay }}</span>
+                        </div>
+
+                        <!-- 轮次信息 -->
+                        <div v-if="rounds.pros_question_rounds !== undefined" class="space-y-1 pt-2 border-t border-gray-700">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-gray-500">提问轮次</span>
+                                <span class="text-gray-300">{{ rounds.pros_question_rounds }} / 3</span>
+                            </div>
+                            <div class="flex justify-between text-xs">
+                                <span class="text-gray-500">举证轮次</span>
+                                <span class="text-gray-300">{{ rounds.pros_evience_rounds }} / 3</span>
+                            </div>
+                            <div class="flex justify-between text-xs">
+                                <span class="text-gray-500">辩论轮次</span>
+                                <span class="text-gray-300">{{ rounds.pros_focus_rounds }} / 2</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 争议焦点 -->
+                <div v-if="focus.length > 0" class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                    <h2 class="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-2">
+                        <span>🎯</span> 争议焦点 ({{ focus.length }})
+                    </h2>
+                    <div class="space-y-2">
+                        <div v-for="(item, idx) in focus" :key="idx"
+                             class="text-sm p-2 rounded bg-gray-700/50 text-gray-300">
+                            <span class="text-amber-400 mr-2">{{ idx + 1 }}.</span>{{ item }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 案件信息 -->
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                    <h2 class="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-2">
+                        <span>📋</span> 案件信息
+                    </h2>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">案件编号</span>
+                            <span class="text-gray-300">{{ trialData.meta.case_id }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">法院</span>
+                            <span class="text-gray-300">{{ trialData.meta.court_name }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">被告人</span>
+                            <span class="text-gray-300">{{ trialData.meta.defendant_name }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">罪名</span>
+                            <span class="text-red-400">{{ trialData.meta.crime }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧消息区域 -->
+            <div class="lg:col-span-3 space-y-4">
+                <!-- 消息流 -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+                        <h2 class="text-sm font-semibold text-gray-400 flex items-center gap-2">
+                            <span>💬</span> 庭审记录
+                            <span v-if="messages.length > 0" class="text-gray-500">({{ messages.length }} 条)</span>
+                        </h2>
+                        <button @click="scrollToBottom" class="text-xs text-blue-400 hover:text-blue-300">
+                            ⬇️ 滚到底部
+                        </button>
+                    </div>
+                    <div ref="messageContainer" class="h-[400px] overflow-y-auto p-4 space-y-3 scrollbar-thin">
+                        <div v-if="messages.length === 0" class="h-full flex items-center justify-center text-gray-500">
+                            <div class="text-center">
+                                <div class="text-4xl mb-2">⚖️</div>
+                                <p>点击"开始庭审"开始模拟</p>
+                            </div>
+                        </div>
+                        <div v-for="(msg, idx) in messages" :key="idx"
+                             class="message-animate p-3 rounded-r-lg border-l-4"
+                             :class="getRoleClass(msg)">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="font-medium text-sm" :class="getRoleTextColor(msg)">
+                                    {{ getRoleName(msg) }}
+                                </span>
+                                <span class="text-xs text-gray-500">{{ formatTime(msg.timestamp) }}</span>
+                                <span v-if="msg.node_name" class="text-xs text-gray-600 font-mono">
+                                    [{{ msg.node_name }}]
+                                </span>
+                            </div>
+                            <div class="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{{ msg.content }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 用户中断响应区 -->
+                <div v-if="interrupt" class="bg-gray-800 rounded-xl border border-blue-700 overflow-hidden">
+                    <div class="px-4 py-3 bg-blue-900/30 border-b border-blue-700/50">
+                        <h2 class="text-sm font-semibold text-blue-400 flex items-center gap-2">
+                            <span class="animate-pulse">🔔</span> 需要您的响应
+                        </h2>
+                    </div>
+                    <div class="p-4">
+                        <p class="text-gray-200 mb-4">{{ interrupt.prompt }}</p>
+
+                        <!-- boolean 输入 -->
+                        <div v-if="interrupt.input_type === 'boolean'" class="flex gap-3">
+                            <button @click="sendInput(true)"
+                                    class="flex-1 py-3 px-4 rounded-lg bg-green-600 hover:bg-green-500 text-white font-medium transition-colors">
+                                ✅ 是
+                            </button>
+                            <button @click="sendInput(false)"
+                                    class="flex-1 py-3 px-4 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors">
+                                ❌ 否
+                            </button>
+                        </div>
+
+                        <!-- string 输入 -->
+                        <div v-else-if="interrupt.input_type === 'string'" class="flex gap-2">
+                            <input v-model="stringInput" type="text"
+                                   @keyup.enter="sendInput(stringInput)"
+                                   placeholder="请输入您的回答..."
+                                   class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
+                            <button @click="sendInput(stringInput)"
+                                    :disabled="!stringInput.trim()"
+                                    class="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">
+                                发送
+                            </button>
+                        </div>
+
+                        <!-- evidence 输入 -->
+                        <div v-else-if="interrupt.input_type === 'evidence'" class="space-y-3">
+                            <div class="flex gap-2 items-center mb-3">
+                                <span class="text-sm text-gray-400">举证模式:</span>
+                                <select v-model="evidenceShowType" class="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:border-blue-500">
+                                    <option value="single">单一证据</option>
+                                    <option value="union">联合证据</option>
+                                    <option value="quit">放弃举证</option>
+                                </select>
+                            </div>
+                            <div v-if="evidenceShowType !== 'quit'" class="max-h-48 overflow-y-auto border border-gray-700 rounded-lg p-2 space-y-2">
+                                <label v-for="ev in availableEvidence" :key="ev.id"
+                                       class="flex items-start gap-3 p-2 rounded hover:bg-gray-700/50 cursor-pointer">
+                                    <input type="checkbox" :value="ev" v-model="selectedEvidence"
+                                           class="mt-1 w-4 h-4 rounded border-gray-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-800">
+                                    <div class="flex-1">
+                                        <div class="font-medium text-sm text-white">{{ ev.name }}</div>
+                                        <div class="text-xs text-gray-400 mt-1">{{ ev.content.slice(0, 80) }}...</div>
+                                    </div>
+                                </label>
+                            </div>
+                            <div class="flex gap-2">
+                                <input v-if="evidenceShowType !== 'quit'" v-model="evidenceMessage" type="text"
+                                       placeholder="举证说明（可选）..."
+                                       class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
+                                <button @click="sendEvidenceInput"
+                                        class="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors">
+                                    提交证据
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 选项输入 -->
+                        <div v-else-if="interrupt.options && interrupt.options.length > 0" class="space-y-2">
+                            <button v-for="option in interrupt.options" :key="option"
+                                    @click="sendInput(option)"
+                                    class="w-full text-left px-4 py-3 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors">
+                                {{ option }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 完成状态 -->
+                <div v-if="trialCompleted" class="bg-green-900/30 border border-green-700 rounded-xl p-6 text-center">
+                    <div class="text-4xl mb-3">🎉</div>
+                    <h3 class="text-xl font-bold text-green-400 mb-2">庭审已完成</h3>
+                    <p class="text-gray-400">所有节点执行完毕，点击"重新开始"可进行新的庭审模拟</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- 底部状态栏 -->
+        <footer class="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 px-6 py-2">
+            <div class="max-w-7xl mx-auto flex items-center justify-between text-xs text-gray-500">
+                <div>
+                    当前节点: <span class="text-gray-300 font-mono">{{ currentNodeName || '-' }}</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span>消息数: {{ messages.length }}</span>
+                    <span v-if="lastMessageTime">最后更新: {{ lastMessageTime }}</span>
+                </div>
+            </div>
+        </footer>
+
+        <!-- 错误提示 -->
+        <div v-if="error" class="fixed top-4 right-4 bg-red-900/90 border border-red-700 rounded-lg p-4 max-w-md z-50">
+            <div class="flex items-start gap-3">
+                <span class="text-red-400">⚠️</span>
+                <div>
+                    <h4 class="font-medium text-red-400">发生错误</h4>
+                    <p class="text-sm text-gray-300 mt-1">{{ error }}</p>
+                </div>
+                <button @click="error = null" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, computed, nextTick, onMounted, onUnmounted } = Vue;
+
+        createApp({
+            setup() {
+                // WebSocket 连接
+                const ws = ref(null);
+                const connected = ref(false);
+                const threadId = ref(null);
+                const reconnectAttempts = ref(0);
+                const reconnectTimer = ref(null);
+
+                // 庭审状态
+                const trialStarted = ref(false);
+                const trialCompleted = ref(false);
+                const messages = ref([]);
+                const currentPhase = ref('');
+                const progress = ref(0);
+                const focus = ref([]);
+                const rounds = ref({});
+                const currentNodeName = ref('');
+
+                // 用户输入
+                const interrupt = ref(null);
+                const stringInput = ref('');
+                const selectedEvidence = ref([]);
+                const evidenceShowType = ref('single');
+                const evidenceMessage = ref('');
+
+                // UI 引用
+                const messageContainer = ref(null);
+                const error = ref(null);
+                const lastMessageTime = ref('');
+
+                // 预设测试数据
+                const trialData = ref({
+                    meta: {
+                        abstract: "2016年3月24日，程振贤饮酒后驾驶无号牌电动车搭载醉酒的张龙上路行驶，与停在路边的小货车发生碰撞。程振贤与张龙摔倒在地，随后，程振贤将张龙送至旅店房间入住后离开。次日，旅店店主发现张龙异样后报警。张龙经医院抢救无效死亡。后经法医鉴定张龙符合钝性暴力作用头部致严重颅脑损伤死亡。",
+                        prosecutor_title: "江山市北湖区人民检察院",
+                        prosecutor_name: "王某",
+                        statement_charge: "被告人程振贤，男，1989年9月23日出生，身份证号码456878198909236532，汉族，初中文化，户籍所在地海宁省武鸣市彩云县禄水乡清湖区雷打浦四巷8号，现住江山市北湖区小石镇华盛电子厂宿舍。因涉嫌过失致人死亡罪，于2016年3月25日被江山市公安局北湖分局刑事拘留，同年4月4日经本院批准逮捕，现羁押于北湖区看守所。\n\n本案由江山市公安局北湖分局侦查终结，以被告人程振贤涉嫌过失致人死亡罪，于2016年4月6日移送本院审查起诉。本院受理后，已依法告知被告人有权委托辩护人，告知被害人近亲属有权委托诉讼代理人，依法讯问了被告人，听取了辩护人及被害人近亲属的意见，审查了全部案件材料。\n\n经依法审查查明：\n2016年3月24日22时许，被告人程振贤与张龙（死者）等人在江山市北湖区小石镇潭头白芸村一烧烤店饮酒，四人共饮用三扎啤酒（每扎3升）。至次日凌晨2时许，程振贤在明知自身饮酒的情况下，驾驶夜灯缺失的无号牌电动自行车，搭载已醉酒的张龙返回住所，因车速过快且未注意观察路况，于小潭高中附近斜坡路口与停放在路中的小货车发生碰撞，二人摔倒在地，张龙的头部与小货车发生碰撞。事故发生后，程振贤发现张龙倒地后无反应，但未采取任何医疗救助措施，仅将其送至小潭汽车站对面出租屋后径直离开。次日上午11时许，张龙被旅店店主黄晨发现异常，经医生到场确认已死亡，经法医鉴定张龙符合钝性暴力作用头部致严重颅脑损伤死亡。\n\n认定上述犯罪事实的证据如下：\n1.证人证言：证人黄晨、潘彩云、刘海月的证言；\n2.被告人供述和辩解：被告人程振贤的供述和辩解；\n3.鉴定意见：法医学尸体检验鉴定书；\n4.勘验笔录：现场勘验笔录。\n\n本院认为，被告人程振贤在明知饮酒后驾驶能力会下降的情况下，醉酒驾驶电动车载被害人高速行驶导致事故发生，并在被害人因事故失去意识后疏于检查且未及时送医，导致被害人因未及时获得救治而死亡，其行为已触犯《中华人民共和国刑法》第二百三十三条之规定，犯罪事实清楚，证据确实、充分，应当以过失致人死亡罪追究其刑事责任。根据《中华人民共和国刑事诉讼法》第一百七十二条之规定，本院依法提起公诉，请依法判处。\n\n此致\n江山市北湖区人民法院",
+                        crime: "过失致人死亡罪",
+                        defendant_name: "程振贤",
+                        defendant_former_name: null,
+                        defendant_birthdate: "1989-09-23",
+                        defendant_birthplace: "海宁省武鸣市彩云县",
+                        defendant_ethnicity: "汉族",
+                        defendant_education: "初中",
+                        defendant_occupation: "工人",
+                        defendant_employer: "华盛电子厂",
+                        defendant_residence: "海宁省江山市北湖区小石镇华盛电子厂宿舍",
+                        defendant_ID_number: "456878198909236532",
+                        defendant_legal_record: "无",
+                        detention_date: "2016-03-25",
+                        indictment_date: "2016-04-20",
+                        attorney_name: "李某（北京典谟律师事务所）",
+                        court_name: "江山市北湖区人民法院",
+                        judge_name: "张审判长",
+                        judge_name_2: "王陪审员",
+                        clerk_name: "李书记员",
+                        case_id: "江公北诉字[2016]03449号"
+                    },
+                    evidence_list: [
+                        { id: "E001", name: "一号案例说明", content: "本案控方以程振贤构成过失致人死亡罪起诉，辩方进行无罪辩护；庭审准备遵循案情概要所述立场；只涉及程振贤一人一案，无刑事附带民事诉讼；程序合法，无违法行为；证据原始且取证合法；地名人名虚拟。", provider: "defendant" },
+                        { id: "E002", name: "案情概要", content: "公诉机关江山市北湖区人民检察院，被告人程振贤；2016年3月24日程振贤饮酒后驾无号牌电动车搭载醉酒张龙，与路边小货车碰撞，后送张龙至旅店离开；次日张龙死亡，经鉴定为钝性暴力致严重颅脑损伤死亡。", provider: "defendant" },
+                        { id: "E003", name: "起诉意见书", content: "江公北诉字[2016]03449号；嫌疑人程振贤基本信息；案情：2016年3月24日晚与张龙喝酒后驾电动车碰撞小货车，未送医而送至出租屋；次日张龙死亡；证据包括供述、现场勘验、法医鉴定、证言；涉嫌过失致人死亡罪。", provider: "defendant" },
+                        { id: "E004", name: "常住人口户籍资料", content: "程振贤，男，1989年9月23日生，身份证456878198909236532，汉族，户籍海宁省武鸣市彩云县禄水乡清湖区雷打浦四巷8号。", provider: "defendant" },
+                        { id: "E005", name: "现场勘验笔录", content: "江公(北)勘[2016]7547号；勘验兴旺美食店西侧旅馆208房间及相关现场，发现尸体、血迹、刮擦痕迹；包括示意图和照片。", provider: "defendant" },
+                        { id: "E006", name: "法医学尸体检验鉴定书", content: "江公北(司)鉴(法)[2016]2478号；张龙尸体检验：多处挫擦伤、头皮下血肿、颅骨骨折、硬膜下血肿、脑疝形成；死因钝性暴力致严重颅脑损伤死亡。", provider: "defendant" },
+                        { id: "E007", name: "黄晨询问笔录", content: "黄晨（房东）描述：2016年3月25日凌晨三男一女租208房，醉酒男子入住后其他人离开；上午发现男子异样，报警；医生确认死亡。", provider: "defendant" },
+                        { id: "E008", name: "潘彩云询问笔录", content: "潘彩云（房东妻子）描述：上午查房发现208房客人无反应，通知丈夫；三人送客入住，无人照顾；房间无凌乱痕迹。", provider: "defendant" },
+                        { id: "E009", name: "刘海月询问笔录", content: "刘海月描述：凌晨程振贤叫帮忙开房，扶醉酒朋友入住后离开；上午房东通知，发现死亡。", provider: "defendant" },
+                        { id: "E010", name: "程振贤询问笔录", content: "程振贤描述：与小龙（张龙）喝酒后驾电动车碰撞小货车，倒地后送小龙至旅店休息；上午发现死亡。", provider: "defendant" },
+                        { id: "E011", name: "程振贤第一次讯问笔录", content: "程振贤供述：喝酒细节、碰撞过程、未送医原因、送至旅店经过；以为醉酒未受伤。", provider: "defendant" },
+                        { id: "E012", name: "程振贤第二次讯问笔录", content: "程振贤供述：喝酒量、碰撞细节、小龙醉酒状态、检查伤势；无摩托驾照。", provider: "defendant" },
+                        { id: "E013", name: "程振贤第三次讯问笔录", content: "程振贤供述：扶小龙至旅店过程、未送医原因。", provider: "defendant" },
+                        { id: "E014", name: "程振贤第四次讯问笔录", content: "程振贤供述：确认碰撞致伤、接受逮捕。", provider: "defendant" },
+                        { id: "E015", name: "现勘照片和图表", content: "包括旅馆房间照片、血迹、现场路况、小货车刮擦痕迹、尸体位置等视觉证据。", provider: "defendant" },
+                        { id: "E016", name: "无罪辩护词主体", content: "辩护人认为被告无罪：无主观过失、未预见死亡风险、积极救助行为、死因可能为醉酒或他因；引用法律和类似案例论证。", provider: "defendant" }
+                    ]
+                });
+
+                // 计算属性
+                const phaseDisplay = computed(() => {
+                    const phaseMap = {
+                        'opening': '开庭阶段',
+                        'investigation': '法庭调查',
+                        'debate': '法庭辩论',
+                        'verdict': '宣布判决'
+                    };
+                    return phaseDisplay.value || phaseMap[currentPhase.value] || currentPhase.value;
+                });
+
+                const phaseColor = computed(() => {
+                    const colorMap = {
+                        'opening': 'text-blue-400',
+                        'investigation': 'text-yellow-400',
+                        'debate': 'text-orange-400',
+                        'verdict': 'text-purple-400'
+                    };
+                    return colorMap[currentPhase.value] || 'text-gray-400';
+                });
+
+                const progressBarColor = computed(() => {
+                    if (progress.value < 25) return 'bg-blue-500';
+                    if (progress.value < 50) return 'bg-yellow-500';
+                    if (progress.value < 75) return 'bg-orange-500';
+                    return 'bg-green-500';
+                });
+
+                const availableEvidence = computed(() => {
+                    return trialData.value.evidence_list.filter(ev => ev.provider === 'prosecutor' || ev.provider === 'defendant');
+                });
+
+                // WebSocket 方法
+                const connect = () => {
+                    if (ws.value?.readyState === WebSocket.OPEN) return;
+
+                    const wsUrl = 'ws://localhost:8000/ws/trial';
+                    ws.value = new WebSocket(wsUrl);
+
+                    ws.value.onopen = () => {
+                        connected.value = true;
+                        reconnectAttempts.value = 0;
+                        addSystemMessage('已连接到庭审服务器');
+                    };
+
+                    ws.value.onmessage = (event) => {
+                        try {
+                            const msg = JSON.parse(event.data);
+                            handleMessage(msg);
+                        } catch (e) {
+                            console.error('Failed to parse message:', e);
+                        }
+                    };
+
+                    ws.value.onclose = () => {
+                        connected.value = false;
+                        threadId.value = null;
+                        addSystemMessage('连接已断开');
+                        // 自动重连
+                        if (reconnectAttempts.value < 5) {
+                            reconnectTimer.value = setTimeout(() => {
+                                reconnectAttempts.value++;
+                                addSystemMessage(`尝试重连... (${reconnectAttempts.value}/5)`);
+                                connect();
+                            }, 3000);
+                        }
+                    };
+
+                    ws.value.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                        error.value = '连接失败，请确保后端服务正在运行';
+                    };
+                };
+
+                const disconnect = () => {
+                    if (reconnectTimer.value) {
+                        clearTimeout(reconnectTimer.value);
+                    }
+                    if (ws.value) {
+                        ws.value.close();
+                        ws.value = null;
+                    }
+                    connected.value = false;
+                };
+
+                const send = (msg) => {
+                    if (ws.value?.readyState === WebSocket.OPEN) {
+                        ws.value.send(JSON.stringify(msg));
+                    }
+                };
+
+                // 消息处理
+                const handleMessage = (msg) => {
+                    console.log('Received:', msg);
+
+                    switch (msg.type) {
+                        case 'session_created':
+                            threadId.value = msg.data.thread_id;
+                            addSystemMessage('庭审会话已创建');
+                            break;
+
+                        case 'node_executed':
+                            currentNodeName.value = msg.data.node_name;
+                            progress.value = msg.data.progress || 0;
+                            currentPhase.value = msg.data.current_phase || '';
+
+                            if (msg.data.focus) {
+                                focus.value = msg.data.focus;
+                            }
+                            if (msg.data.rounds) {
+                                rounds.value = msg.data.rounds;
+                            }
+
+                            // 添加消息
+                            if (msg.data.messages) {
+                                msg.data.messages.forEach(m => {
+                                    addMessage(m.content || m, msg.data.node_name);
+                                });
+                            }
+                            if (msg.data.state_delta?.latest_message) {
+                                addMessage(msg.data.state_delta.latest_message, msg.data.node_name);
+                            }
+                            break;
+
+                        case 'interrupt_request':
+                            // 确保 node_name 是字符串
+                            if (Array.isArray(msg.data.node_name)) {
+                                msg.data.node_name = msg.data.node_name[0];
+                            }
+                            interrupt.value = msg.data;
+                            scrollToBottom();
+                            break;
+
+                        case 'trial_completed':
+                            trialCompleted.value = true;
+                            interrupt.value = null;
+                            addSystemMessage('🎉 庭审已完成！');
+                            break;
+
+                        case 'error':
+                            error.value = msg.data.message || '发生未知错误';
+                            break;
+                    }
+
+                    lastMessageTime.value = new Date().toLocaleTimeString();
+                    scrollToBottom();
+                };
+
+                // 消息添加
+                const addMessage = (content, nodeName = null) => {
+                    if (!content) return;
+
+                    // 根据节点名称判断角色
+                    let role = 'system';
+                    if (nodeName) {
+                        if (nodeName.includes('judge') || nodeName.includes('focus')) role = 'judge';
+                        else if (nodeName.includes('pros')) role = 'prosecutor';
+                        else if (nodeName.includes('defense') || nodeName.includes('defendant')) role = 'defendant';
+                        else if (nodeName.includes('clerk')) role = 'clerk';
+                    }
+
+                    // 尝试从内容中提取角色信息
+                    if (typeof content === 'string') {
+                        if (content.includes('审判长') || content.includes('法官')) role = 'judge';
+                        else if (content.includes('公诉人') || content.includes('检察员')) role = 'prosecutor';
+                        else if (content.includes('被告') || content.includes('辩护')) role = 'defendant';
+                        else if (content.includes('书记员')) role = 'clerk';
+                    }
+
+                    messages.value.push({
+                        role,
+                        content: typeof content === 'string' ? content : JSON.stringify(content),
+                        node_name: nodeName,
+                        timestamp: Date.now()
+                    });
+                };
+
+                const addSystemMessage = (content) => {
+                    messages.value.push({
+                        role: 'system',
+                        content,
+                        timestamp: Date.now()
+                    });
+                };
+
+                // 用户交互
+                const toggleTrial = () => {
+                    if (!connected.value) {
+                        connect();
+                        return;
+                    }
+
+                    if (!trialStarted.value) {
+                        startTrial();
+                    } else if (trialCompleted.value) {
+                        resetTrial();
+                    }
+                };
+
+                const startTrial = () => {
+                    trialStarted.value = true;
+                    trialCompleted.value = false;
+                    messages.value = [];
+                    focus.value = [];
+                    rounds.value = {};
+                    progress.value = 0;
+
+                    send({
+                        type: 'start_trial',
+                        data: {
+                            case_info: trialData.value.meta,
+                            evidence_list: trialData.value.evidence_list
+                        }
+                    });
+                };
+
+                const resetTrial = () => {
+                    trialStarted.value = false;
+                    trialCompleted.value = false;
+                    messages.value = [];
+                    focus.value = [];
+                    rounds.value = {};
+                    progress.value = 0;
+                    currentPhase.value = '';
+                    interrupt.value = null;
+                };
+
+                const sendInput = (input) => {
+                    if (!interrupt.value || !threadId.value) return;
+
+                    send({
+                        type: 'user_input',
+                        thread_id: threadId.value,
+                        data: {
+                            interrupt_node: interrupt.value.node_name,
+                            input: input
+                        }
+                    });
+
+                    interrupt.value = null;
+                    stringInput.value = '';
+                };
+
+                const sendEvidenceInput = () => {
+                    if (!interrupt.value || !threadId.value) return;
+
+                    let currentEvidence;
+                    if (evidenceShowType.value === 'quit') {
+                        currentEvidence = null;
+                    } else if (evidenceShowType.value === 'single' && selectedEvidence.value.length > 0) {
+                        currentEvidence = selectedEvidence.value[0];
+                    } else {
+                        currentEvidence = selectedEvidence.value;
+                    }
+
+                    send({
+                        type: 'user_input',
+                        thread_id: threadId.value,
+                        data: {
+                            interrupt_node: interrupt.value.node_name,
+                            input: {
+                                current_evidence: currentEvidence,
+                                messages: evidenceMessage.value || (evidenceShowType.value === 'quit' ? '放弃举证' : '')
+                            }
+                        }
+                    });
+
+                    interrupt.value = null;
+                    selectedEvidence.value = [];
+                    evidenceMessage.value = '';
+                };
+
+                // UI 辅助方法
+                const clearMessages = () => {
+                    messages.value = [];
+                };
+
+                const scrollToBottom = async () => {
+                    await nextTick();
+                    if (messageContainer.value) {
+                        messageContainer.value.scrollTop = messageContainer.value.scrollHeight;
+                    }
+                };
+
+                const getRoleClass = (msg) => {
+                    return `role-${msg.role}`;
+                };
+
+                const getRoleTextColor = (msg) => {
+                    const colors = {
+                        judge: 'text-amber-400',
+                        prosecutor: 'text-blue-400',
+                        defendant: 'text-green-400',
+                        clerk: 'text-gray-400',
+                        system: 'text-purple-400'
+                    };
+                    return colors[msg.role] || 'text-gray-400';
+                };
+
+                const getRoleName = (msg) => {
+                    const names = {
+                        judge: '👨‍⚖️ 审判长',
+                        prosecutor: '👔 公诉人',
+                        defendant: '👤 被告/辩护律师',
+                        clerk: '📝 书记员',
+                        system: '🔔 系统'
+                    };
+                    return names[msg.role] || '💬';
+                };
+
+                const formatTime = (timestamp) => {
+                    return new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                };
+
+                // 生命周期
+                onMounted(() => {
+                    connect();
+                });
+
+                onUnmounted(() => {
+                    disconnect();
+                });
+
+                return {
+                    // 状态
+                    connected, threadId, trialStarted, trialCompleted,
+                    messages, currentPhase, progress, focus, rounds,
+                    currentNodeName, interrupt, stringInput, error,
+                    selectedEvidence, evidenceShowType, evidenceMessage,
+                    messageContainer, lastMessageTime, trialData,
+
+                    // 计算属性
+                    phaseDisplay, phaseColor, progressBarColor, availableEvidence,
+
+                    // 方法
+                    toggleTrial, startTrial, resetTrial, clearMessages,
+                    sendInput, sendEvidenceInput, scrollToBottom,
+                    getRoleClass, getRoleTextColor, getRoleName, formatTime
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

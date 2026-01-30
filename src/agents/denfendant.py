@@ -5,6 +5,8 @@ from ..state import *
 from langchain.agents import create_agent
 from pydantic import BaseModel,Field
 from langgraph.types import interrupt,Command
+from src.api.llm_wrapper import llm_wrapper
+
 #大模型选择
 ds_V3 = models["DeepSeek_V3"]
 ds_R1 = models["DeepSeek_R1"]
@@ -48,7 +50,10 @@ async def defense_reply(state: CourtState)-> CourtState:
         }
     )
     defendant = create_agent(model=ds_V3)
-    response = await defendant.ainvoke(defense_reply)
+    response = await llm_wrapper.ainvoke_with_retry(
+        defendant.ainvoke,
+        defense_reply
+    )
     reply = response.get("messages",[])[-1]
     reply.name = f"被告人{state.meta.defendant_name}"
     return {
@@ -167,7 +172,10 @@ async def defense_self_statement(state: CourtState)-> CourtState:
         }
     )
     defendant = create_agent(model= ds_V3)
-    response = await defendant.ainvoke(defense_self_statement)
+    response = await llm_wrapper.ainvoke_with_retry(
+        defendant.ainvoke,
+        defense_self_statement
+    )
     statement = response.get("messages",[])[-1]
     statement.name = f"被告人{state.meta.defendant_name}"
     return {
@@ -219,7 +227,10 @@ async def defense_final_statement(state: CourtState)-> CourtState:
         }
     )
     defendant = create_agent(model=ds_V3)
-    response = await defendant.ainvoke(defense_final_statement)
+    response = await llm_wrapper.ainvoke_with_retry(
+        defendant.ainvoke,
+        defense_final_statement
+    )
     sumup = response.get("messages",[])[-1]
     sumup.name = f"被告人{state.meta.defendant_name}"
     return {

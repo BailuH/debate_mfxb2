@@ -6,6 +6,7 @@ from langchain.agents import create_agent
 from langchain.agents.structured_output import ProviderStrategy
 from pydantic import BaseModel,Field
 from langgraph.types import Command
+from src.api.llm_wrapper import llm_wrapper
 
 class evidence_response_format(BaseModel):
     current_evidence : List[Evidence] | None = Field("这里的取值有三种情况，分别对应三种举证模式")
@@ -52,7 +53,10 @@ async def pros_question(state: CourtState)-> CourtState:
             }
         )
         prosecutor = create_agent(model=ds_V3)
-        response = await prosecutor.ainvoke(pros_question)
+        response = await llm_wrapper.ainvoke_with_retry(
+            prosecutor.ainvoke,
+            pros_question
+        )
         question = response.get("messages",[])[-1]
         question.name = f"公诉人{state.meta.prosecutor_name}"
         return {
@@ -75,7 +79,10 @@ async def pros_summary(state: CourtState)-> CourtState:
         }
     )
     prosecutor = create_agent(model=ds_V3)
-    response = await prosecutor.ainvoke(pros_summary)
+    response = await llm_wrapper.ainvoke_with_retry(
+        prosecutor.ainvoke,
+        pros_summary
+    )
     summary = response.get("messages",[])[-1]
     summary.name = f"公诉人{state.meta.prosecutor_name}"
     return {
@@ -96,7 +103,10 @@ async def pros_evidence_decision(state: CourtState)-> Command:
         }
     )
     prosecutor = create_agent(model=ds_V3,response_format=ProviderStrategy(evidence_response_format))
-    response = await prosecutor.ainvoke(evidence_decision)
+    response = await llm_wrapper.ainvoke_with_retry(
+        prosecutor.ainvoke,
+        evidence_decision
+    )
     decision: evidence_response_format = response["structured_response"]
     if decision.evidence_show_type == "quit" or state.pros_evidence_rounds <= 0:
         return Command(update={
@@ -127,7 +137,10 @@ async def pros_show_evidence(state: CourtState)-> CourtState:
         }
     )
     prosecutor = create_agent(model=ds_V3)
-    response = await prosecutor.ainvoke(show_evidence)
+    response = await llm_wrapper.ainvoke_with_retry(
+        prosecutor.ainvoke,
+        show_evidence
+    )
     show = response.get("messages",[])[-1]
     show.name = f"公诉人{state.meta.prosecutor_name}"
     rounds = state.pros_evidence_rounds - 1
@@ -148,7 +161,10 @@ async def pros_cross(state: CourtState)-> CourtState:
         }
     )
     prosecutor = create_agent(model=ds_V3)
-    response = await prosecutor.ainvoke(pros_cross)
+    response = await llm_wrapper.ainvoke_with_retry(
+        prosecutor.ainvoke,
+        pros_cross
+    )
     cross = response.get("messages",[])[-1]
     cross.name = f"公诉人{state.meta.prosecutor_name}"
     return {
@@ -166,7 +182,10 @@ async def pros_statement(state: CourtState)-> CourtState:
         }
     )
     prosecutor = create_agent(model=ds_V3)
-    response = await prosecutor.ainvoke(pros_statement)
+    response = await llm_wrapper.ainvoke_with_retry(
+        prosecutor.ainvoke,
+        pros_statement
+    )
     statement = response.get("messages",[])[-1]
     statement.name = f"公诉人{state.meta.prosecutor_name}"
     return {
@@ -187,7 +206,10 @@ async def pros_focus(state: CourtState)-> Command:
             }
         )
         prosecutor = create_agent(model=ds_V3)
-        response = await prosecutor.ainvoke(pros_focus)
+        response = await llm_wrapper.ainvoke_with_retry(
+            prosecutor.ainvoke,
+            pros_focus
+        )
         focus = response.get("messages",[])[-1]
         focus.name = f"公诉人{state.meta.prosecutor_name}"
         return Command(
@@ -212,7 +234,10 @@ async def pros_sumup(state: CourtState)-> CourtState:
         }
     )
     prosecutor = create_agent(model=ds_V3)
-    response = await prosecutor.ainvoke(pros_sumup)
+    response = await llm_wrapper.ainvoke_with_retry(
+        prosecutor.ainvoke,
+        pros_sumup
+    )
     sumup = response.get("messages",[])[-1]
     sumup.name = f"公诉人{state.meta.prosecutor_name}"
     return {

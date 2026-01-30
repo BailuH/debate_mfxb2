@@ -6,6 +6,8 @@ from langchain.agents import create_agent
 from langchain.agents.structured_output import ProviderStrategy
 from pydantic import BaseModel,Field
 from langgraph.types import Command
+from src.api.llm_wrapper import llm_wrapper
+
 #大模型选择
 ds_V3 = models["DeepSeek_V3"]
 ds_R1 = models["DeepSeek_R1"]
@@ -53,7 +55,10 @@ async def judge_check(state: CourtState) -> CourtState:
         }
     )
     judge = create_agent(model=ds_V3)
-    output =  await judge.ainvoke(judge_check)
+    output = await llm_wrapper.ainvoke_with_retry(
+        judge.ainvoke,
+        judge_check
+    )
     question = output.get("messages", [])[-1]
     question.name = f"审判长_{state.meta.judge_name}"
     return {
@@ -122,7 +127,10 @@ async def judge_summary(state: CourtState)-> CourtState:
             "messages" : state.messages
         }
     )
-    response = await judge.ainvoke(judge_summary)
+    response = await llm_wrapper.ainvoke_with_retry(
+        judge.ainvoke,
+        judge_summary
+    )
     summary: focus_response_format = response["structured_response"]
     return {
         "focus": summary.focus,
@@ -168,7 +176,10 @@ async def judge_verdict(state:CourtState)-> CourtState:
             "messages" : state.messages
         }
     )
-    response = await judge.ainvoke(judge_verdict)
+    response = await llm_wrapper.ainvoke_with_retry(
+        judge.ainvoke,
+        judge_verdict
+    )
     verdict = response.get("messages",[])[-1]
     return {
         "messages": [verdict]

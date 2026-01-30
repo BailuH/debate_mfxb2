@@ -83,4 +83,9 @@ graph.add_edge("defense_final_statement","judge_verdict")
 graph.add_edge("judge_verdict",END)
 
 
+# Compile the graph (for backward compatibility and LangSmith testing)
 app = graph.compile()
+
+# Export the uncompiled graph for API use with custom checkpointer
+# The API module will compile this with MemorySaver
+raw_graph = graph
