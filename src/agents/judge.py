@@ -3,14 +3,15 @@ from langchain_core.messages import AIMessage
 from ..prompt import *
 from ..state import *
 from langchain.agents import create_agent
-from langchain.agents.structured_output import ProviderStrategy
+from langchain.agents.structured_output import ToolStrategy
 from pydantic import BaseModel,Field
 from langgraph.types import Command
-from src.api.llm_wrapper import llm_wrapper
+from src.llm_wrapper import llm_wrapper
 
 #大模型选择
 ds_V3 = models["DeepSeek_V3"]
 ds_R1 = models["DeepSeek_R1"]
+kimi_k2_5 = models["KIMI_K2.5"]
 
 class focus_response_format(BaseModel):
     focus: list[str] = Field(description= "归纳的争议焦点列表")
@@ -28,8 +29,12 @@ async def judge_open(state: CourtState) -> CourtState:
             "defendant_name" : state.meta.defendant_name
         }
     )
+    # Add name field to each message
+    messages = judge_announcement.to_messages()
+    for msg in messages:
+        msg.name = f"审判长{state.meta.judge_name}"
     return {
-        "messages" : judge_announcement.to_messages()
+        "messages" : messages
     }
     
 async def judge_check(state: CourtState) -> CourtState:
@@ -85,10 +90,14 @@ async def right_notify(state: CourtState) -> CourtState:
             "prosecutor_name": state.meta.prosecutor_name
         }
     )
+    # Add name field to each message from introduction
+    intro_messages = introduction.to_messages()
+    for msg in intro_messages:
+        msg.name = f"审判长{state.meta.judge_name}"
     notice = AIMessage(content=RIGHT_NOTIFY,
                          name = f"审判长{state.meta.judge_name}")
     return {
-        "messages": introduction.to_messages() + [notice] 
+        "messages": intro_messages + [notice]
     }
 
 async def judge_start_evidence(state: CourtState) -> CourtState:
@@ -120,7 +129,7 @@ async def judge_summary(state: CourtState)-> CourtState:
     """
     【动态AI节点】审判长根据三方发言，归纳争议焦点，并作说明
     """
-    judge = create_agent(model=ds_V3,response_format= ProviderStrategy(focus_response_format))
+    judge = create_agent(model= kimi_k2_5,response_format= ToolStrategy(focus_response_format))
     judge_summary = await JUDGE_SUMMARY.ainvoke(
         {
             "case_info" : state.meta,
@@ -132,9 +141,11 @@ async def judge_summary(state: CourtState)-> CourtState:
         judge_summary
     )
     summary: focus_response_format = response["structured_response"]
+    # Wrap the summary message in AIMessage with name field
+    summary_msg = AIMessage(content=summary.messages, name=f"审判长{state.meta.judge_name}")
     return {
         "focus": summary.focus,
-        "messages": [summary.messages],
+        "messages": [summary_msg],
         "phase": PhaseEnum.VERDICT
     }
 
@@ -181,6 +192,8 @@ async def judge_verdict(state:CourtState)-> CourtState:
         judge_verdict
     )
     verdict = response.get("messages",[])[-1]
+    # Add name field to the verdict message
+    verdict.name = f"审判长{state.meta.judge_name}"
     return {
         "messages": [verdict]
     }

@@ -166,6 +166,42 @@ def serialize_messages(messages: list[HumanMessage | AIMessage]) -> list[dict[st
     return serialized
 
 
+def _normalize_messages(messages: Any) -> list[Any]:
+    """
+    Normalize messages to a list format.
+
+    Handles:
+    - list of messages -> return as-is
+    - tuple of messages -> convert to list
+    - single message -> wrap in list
+    - tuple with mixed types -> extract only message objects
+
+    Args:
+        messages: Messages in various formats
+
+    Returns:
+        List of message objects
+    """
+    if not messages:
+        return []
+
+    # Check if it's a BaseMessage (single message not in list/tuple)
+    from langchain_core.messages import BaseMessage
+    if isinstance(messages, BaseMessage):
+        return [messages]
+
+    # Convert tuple to list and filter for valid messages
+    if isinstance(messages, tuple):
+        messages = list(messages)
+
+    # Ensure it's a list
+    if not isinstance(messages, list):
+        messages = [messages]
+
+    # Filter out non-message objects (strings, None, etc.)
+    return [msg for msg in messages if isinstance(msg, BaseMessage)]
+
+
 def serialize_state(state: CourtState | dict[str, Any]) -> dict[str, Any]:
     """
     Serialize CourtState to JSON-compatible dict.
@@ -287,6 +323,8 @@ class AsyncGraphExecutor:
         self.app = raw_graph.compile(checkpointer=memory)
         self.session_manager = session_manager
         self.interrupt_map = INTERRUPT_INPUT_TYPES
+        # Track message count per thread for delta calculation
+        self._thread_message_counts: dict[str, int] = {}
         logger.info("AsyncGraphExecutor initialized with MemorySaver")
 
     async def execute_trial(
@@ -307,6 +345,9 @@ class AsyncGraphExecutor:
             Event dicts to be sent to the WebSocket client
         """
         thread_id = config["configurable"]["thread_id"]
+
+        # Initialize message count for this thread (start with 0 for new trial)
+        self._thread_message_counts[thread_id] = 0
 
         try:
             logger.info(f"Starting trial execution for thread: {thread_id}")
@@ -625,8 +666,14 @@ class AsyncGraphExecutor:
             if p:
                 phase = p.value if hasattr(p, "value") else p
 
-        # Get messages safely
-        messages = full_state.get("messages", []) if full_state else []
+        # Get new messages from node_output (the delta), NOT from full_state
+        # node_output contains only what the current node returned
+        raw_messages = node_output.get("messages", []) if node_output else []
+        # Normalize to ensure we have a list of message objects
+        # (handles tuples, single messages, and mixed types)
+        new_messages = _normalize_messages(raw_messages)
+        # Get total message count from full_state for tracking
+        total_message_count = len(full_state.get("messages", [])) if full_state else 0
 
         # Sanitize state_delta to ensure JSON serializability
         sanitized_delta = _sanitize_for_json(node_output)
@@ -636,14 +683,14 @@ class AsyncGraphExecutor:
             "state_delta": sanitized_delta,
             "current_phase": phase,
             "progress": calculate_progress(node_name),
-            "message_count": len(messages),
+            "message_count": total_message_count,
             "focus": list(full_state.get("focus", [])) if full_state else [],
             "rounds": {
                 "pros_question_rounds": full_state.get("pros_question_rounds", 0) if full_state else 0,
                 "pros_evidence_rounds": full_state.get("pros_evidence_rounds", 0) if full_state else 0,
                 "pros_focus_rounds": full_state.get("pros_focus_rounds", 0) if full_state else 0,
             },
-            "messages": serialize_messages(messages[-5:]) if messages else [],
+            "messages": serialize_messages(new_messages),
         }
 
     def _get_current_phase(self, config: dict[str, Any]) -> str:

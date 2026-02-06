@@ -3,20 +3,20 @@ from langchain_core.messages import AIMessage
 from ..prompt import *
 from ..state import *
 from langchain.agents import create_agent
-from langchain.agents.structured_output import ProviderStrategy
+from langchain.agents.structured_output import ProviderStrategy,ToolStrategy
 from pydantic import BaseModel,Field
 from langgraph.types import Command
-from src.api.llm_wrapper import llm_wrapper
+from src.llm_wrapper import llm_wrapper
 
 class evidence_response_format(BaseModel):
-    current_evidence : List[Evidence] | None = Field("这里的取值有三种情况，分别对应三种举证模式")
-    evidence_show_type : Evidence_Show_Enum = Field("这是一个枚举类型，只有三种字符串取值，分别是“independent”，“union”,和“quit”")
+    current_evidence : List[Evidence] | None = Field(description= "这里的取值有三种情况，分别对应三种举证模式")
+    evidence_show_type : Evidence_Show_Enum = Field(description= "这是一个枚举类型，只有三种字符串取值，分别是“independent”，“union”,和“quit”")
 
 
 # 大模型选择
 ds_V3 = models["DeepSeek_V3"]
 ds_R1 = models["DeepSeek_R1"]
-
+kimi_k2_5 = models["KIMI_K2.5"]
 
 
 async def pros_indictment(state: CourtState)-> CourtState:
@@ -102,7 +102,7 @@ async def pros_evidence_decision(state: CourtState)-> Command:
             "evidence_list" : state.evidence_list
         }
     )
-    prosecutor = create_agent(model=ds_V3,response_format=ProviderStrategy(evidence_response_format))
+    prosecutor = create_agent(model=kimi_k2_5,response_format=ToolStrategy(evidence_response_format))
     response = await llm_wrapper.ainvoke_with_retry(
         prosecutor.ainvoke,
         evidence_decision

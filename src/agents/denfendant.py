@@ -5,7 +5,7 @@ from ..state import *
 from langchain.agents import create_agent
 from pydantic import BaseModel,Field
 from langgraph.types import interrupt,Command
-from src.api.llm_wrapper import llm_wrapper
+from src.llm_wrapper import llm_wrapper
 
 #大模型选择
 ds_V3 = models["DeepSeek_V3"]

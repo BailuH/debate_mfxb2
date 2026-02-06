@@ -7,5 +7,6 @@ load_dotenv()
 
 models = {
     "DeepSeek_V3" : ChatOpenAI(model= "DeepSeek-V3", streaming = True),
-    "DeepSeek_R1" : ChatOpenAI(model= "DeepSeek-R1", streaming = True)
+    "DeepSeek_R1" : ChatOpenAI(model= "DeepSeek-R1", streaming = True),
+    "KIMI_K2.5": ChatOpenAI(model= "Kimi-K2.5",streaming=True)
 }
