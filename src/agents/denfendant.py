@@ -138,10 +138,16 @@ async def defense_evidence_control(state: CourtState)-> Command:
 async def defense_show_evidence(state: CourtState) -> CourtState:
     """
     【动态人类节点】辩护人提出证据内容并且做简要说明
+
+    前端输入格式支持：
+    - 单个证据: {"current_evidence": {...}, "messages": "..."}
+    - 多个证据: {"current_evidence": [{...}, {...}], "messages": "..."}
+
+    内部统一转换为 List[Evidence] 以符合 CourtState.current_evidence 的类型要求
     """
     # 1. 获取原始输入（这是一个 dict）
     raw_input = interrupt("请输入补充证据以及证据意见（注意JSON格式规范）")
-    
+
     # 2. 【关键步骤】将字典转换为 Pydantic 模型对象
     # 这样既能进行数据校验，又能启用点号访问 (.messages)
     try:
@@ -150,15 +156,36 @@ async def defense_show_evidence(state: CourtState) -> CourtState:
         # 建议加上简单的错误处理，防止用户输入的 JSON 格式对不上
         raise ValueError(f"输入格式错误，需要符合 defense_evidence_format 定义: {e}")
 
-    # 3. 现在可以使用点号访问属性了
+    # 3. 确保 current_evidence 始终为列表类型（符合 CourtState 定义）
+    # 如果是单个证据，转换为列表；如果已经是列表，直接使用
+    evidence_data = user_input.current_evidence
+    if isinstance(evidence_data, dict):
+        # 单个证据 -> 包装为列表
+        evidence_list = [evidence_data]
+    elif isinstance(evidence_data, list):
+        # 已经是列表 -> 直接使用
+        evidence_list = evidence_data
+    else:
+        # 其他情况（如 Evidence 对象） -> 包装为列表
+        evidence_list = [evidence_data] if evidence_data is not None else []
+
+    # 4. 将字典转换为 Evidence 对象列表
+    evidence_objects = []
+    for ev in evidence_list:
+        if isinstance(ev, dict):
+            evidence_objects.append(Evidence(**ev))
+        elif isinstance(ev, Evidence):
+            evidence_objects.append(ev)
+
+    # 5. 创建消息
     response = HumanMessage(
         content=user_input.messages,
         name=f"辩护代理人{state.meta.attorney_name}"
     )
-    
+
     return {
         "messages": [response],
-        "current_evidence": user_input.current_evidence
+        "current_evidence": evidence_objects
     }
 
 async def defense_self_statement(state: CourtState)-> CourtState:

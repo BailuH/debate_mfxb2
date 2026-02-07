@@ -99,7 +99,14 @@ class ErrorData(BaseModel):
 
 
 class EvidenceSubmit(BaseModel):
-    """Format for evidence submission at interrupt points."""
+    """Format for evidence submission at interrupt points.
+
+    Supports both single evidence and multiple evidence submission:
+    - Single: {"current_evidence": {"id": "...", "name": "...", "content": "...", "provider": "..."}, "messages": "..."}
+    - Multiple: {"current_evidence": [{"id": "...", ...}, {"id": "...", ...}], "messages": "..."}
+
+    The backend will automatically convert single evidence to a list format.
+    """
 
     current_evidence: list[dict[str, Any]] | dict[str, Any]
     messages: str
