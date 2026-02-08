@@ -16,7 +16,7 @@ from src.api.schemas import (
 
 logger = logging.getLogger(__name__)
 
-# Progress tracking for all nodes in the trial flow
+# Progress tracking for all nodes in the trial flow (including routing nodes)
 PROGRESS_NODES = {
     "START": 0,
     "clerk_rules": 1,
@@ -24,16 +24,22 @@ PROGRESS_NODES = {
     "judge_check": 3,
     "right_notify": 4,
     "pros_indictment": 5,
+    "defense_defense_object_control": 6,
     "defense_objection": 10,
+    "pros_round_control": 12,
     "pros_question": 15,
-    "defense_reply": 20,
+    "defense_reply": 18,
+    "reply_control": 19,
+    "defense_question_control": 21,
     "defense_question": 25,
     "pros_summary": 30,
     "defense_summary": 35,
     "judge_start_evidence": 40,
+    "pros_evidence_decision": 42,
     "pros_show_evidence": 45,
     "defense_cross": 50,
     "judge_confirm": 55,
+    "defense_evidence_control": 57,
     "defense_show_evidence": 60,
     "pros_cross": 65,
     "judge_start_debate": 70,
@@ -41,6 +47,7 @@ PROGRESS_NODES = {
     "defense_self_statement": 77,
     "defense_statement": 80,
     "judge_summary": 85,
+    "focus": 86,
     "pros_focus": 88,
     "defense_focus": 90,
     "pros_sumup": 93,

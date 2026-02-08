@@ -247,12 +247,19 @@
 
                         <!-- evidence 输入 -->
                         <div v-else-if="interrupt.input_type === 'evidence'" class="space-y-3">
-                            <div class="flex gap-2 items-center mb-3">
+                            <div v-if="interrupt.node_name !== 'defense_show_evidence'" class="flex gap-2 items-center mb-3">
                                 <span class="text-sm text-gray-400">举证模式:</span>
                                 <select v-model="evidenceShowType" class="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:border-blue-500">
                                     <option value="single">单一证据</option>
                                     <option value="union">联合证据</option>
                                     <option value="quit">放弃举证</option>
+                                </select>
+                            </div>
+                            <div v-else class="flex gap-2 items-center mb-3">
+                                <span class="text-sm text-gray-400">举证模式:</span>
+                                <select v-model="evidenceShowType" class="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:border-blue-500">
+                                    <option value="single">单一证据</option>
+                                    <option value="union">联合证据</option>
                                 </select>
                             </div>
                             <div v-if="evidenceShowType !== 'quit'" class="max-h-48 overflow-y-auto border border-gray-700 rounded-lg p-2 space-y-2">
